@@ -3,9 +3,16 @@
 var Client = require('../lib/client'),
 	Poker = require('../lib/poker'),
 	Jinhua = require('../lib/jinhua_poker'),
-	Holdem = require('../lib/holdem_poker');
+	Holdem = require('../lib/holdem_poker'),
+	Decision = require('../lib/decision');
 
 var client = null;
+var BotCmd = null;
+var BotCards = null;
+var OpenCards = null;
+var PlayerPosition = null;
+
+var BotPlay = false; // should bot play for you
 
 Poker.toHTML = function(cards) {
 	var html = '';
@@ -22,7 +29,7 @@ Poker.toHTML = function(cards) {
 $(document).ready(function(){
 	var socket = io();
 	
-	socket.log_traffic = true;
+	socket.log_traffic = false;
 	
 	client = new Client(socket);
 	
@@ -51,14 +58,7 @@ $(document).ready(function(){
 		addMsg(data.msg);
 		
 		setTimeout(function(){
-			var u = localStorage.getItem('x_userid');
-			var p = localStorage.getItem('x_passwd');
-			if(u && p) {
-				login(u, p);
-			} else {
-				//socket.emit('hello', {});
-				client.rpc('fastsignup', 0, parseSignUpReply);
-			}
+			client.rpc('fastsignup', 0, parseSignUpReply);
 		}, 1000);
 	});
 
@@ -161,6 +161,12 @@ $(document).ready(function(){
 	});
 	
 	client.on('countdown', function(ret){
+		if (BotCmd.fold && BotPlay && OpenCards.length === 0) {
+			Decision.preFlopPlay(client, BotCmd, BotCards, OpenCards, PlayerPosition, parseReply, client.room.pot);
+		} else if (BotCmd.fold) {
+			client.rpc('fold', 0, parseReply);
+		}	
+		addMsg(_T('count down:') + ret.seat + ', ' + ret.sec);
 		addMsg(_T('count down:') + ret.seat + ', ' + ret.sec);
 	});
 	
@@ -361,9 +367,21 @@ function onDialogOKClicked(e) {
 		client.rpc(method, args, parseReply);
 	}
 }
+function toogleBot(){
+	BotPlay = !BotPlay;
+	if (BotPlay) {
+		client.rpc('ready', 0, parseReply);
+	}
+}
 
 function updateCmds( cmds ){
 	var v, div, btn, words, label, input;
+	BotCmd = cmds;
+	console.log(cmds);
+	if (cmds.ready && BotPlay){
+		client.rpc('ready', 0, parseReply);
+	}
+
 	for(var k in cmds) {
 		v = cmds[ k ];
 		if(v === null) {
@@ -483,6 +501,15 @@ function updateCmds( cmds ){
 			
 		}
 	}
+	$('#BotPlay').remove();
+	if (BotPlay) {
+		btn = $('<button>').text(_T("Take Over")).attr('id', "BotPlay").attr('arg', 0).addClass('cmd');
+		$('#cmds').append(btn);
+	} else {
+		btn = $('<button>').text(_T("Bot Play")).attr('id', "BotPlay").attr('arg', 0).addClass('cmd');
+		$('#cmds').append(btn);
+	}
+	btn.on('click', toogleBot);
 }
 
 function login(u, p) {
@@ -491,6 +518,8 @@ function login(u, p) {
 		passwd: p
 	}, function(err,ret){
 		if(err) {
+          localStorage.removeItem('x_userid');
+		  localStorage.removeItem('x_passwd');
 			echo(ret);
 			socket.emit('hello', {});
 		} else {
@@ -511,10 +540,6 @@ function login(u, p) {
 			}
 		}
 		
-	}, function(err){
-		localStorage.removeItem('x_userid');
-		localStorage.removeItem('x_passwd');
-		echo(err);
 	});
 }
 
@@ -592,6 +617,8 @@ function showRoom(room) {
 	var seats = room.seats;
 	var cards = room.cards;
 	var chips = room.chips;
+	BotCards = room.cards;
+	OpenCards = room.shared_cards;
 	$('#roomdesc').text(_T('gamers in room') + ': ' + Object.keys(gamers).join(', '));
 	for(var i=0, len=seats.length; i<len; i++) {
 		var uid = seats[i];
@@ -603,6 +630,7 @@ function showRoom(room) {
 				str += _T_('private cards') + '[ ' + Poker.visualize( cards[i] ) + ' ]';
 				
 				if(g.uid === client.uid) {
+					PlayerPosition = i;
 					$('#mycards').html( client.uid + ', ' + _T('my cards') + ': <br/>' + Poker.toHTML(cards[i]) );
 				}
 			}
@@ -702,7 +730,7 @@ function execCmd() {
 	}
 }
 
-},{"../lib/client":2,"../lib/holdem_poker":3,"../lib/jinhua_poker":4,"../lib/poker":5}],2:[function(require,module,exports){
+},{"../lib/client":2,"../lib/decision":3,"../lib/holdem_poker":4,"../lib/jinhua_poker":5,"../lib/poker":6}],2:[function(require,module,exports){
 exports = module.exports = Client;
 
 function Client( socket ) {	
@@ -953,6 +981,152 @@ Client.prototype.rpc = function(method, args, func) {
 
 
 },{}],3:[function(require,module,exports){
+/*jshint esversion: 6 */
+exports = module.exports = Decision;
+
+function Decision() {
+	if(!(this instanceof Decision)) return new Decision();
+	
+	this.uid = null;
+	this.profile = {};
+	this.room = null;
+	this.seat = -1;
+}
+
+function checkHandInRange(BotCards,range,PlayerPosition) {
+    var play = false;
+    var color1 = BotCards[PlayerPosition][0] >> 4;
+    var number1 = BotCards[PlayerPosition][0] & 0xf;
+    var color2 = BotCards[PlayerPosition][1] >> 4;
+    var number2 = BotCards[PlayerPosition][1] & 0xf;
+    console.log("Card 1 has nr " + number1 + " and color " + color1);
+    console.log("Card 2 has nr " + number2 + " and color " + color2);
+    console.log(PlayerPosition);
+
+    if (color1 === color2) {
+        play  = range.indexOf(number1 + " " + number2 + " 1") !== -1;
+        play  = play ||range.indexOf(number2 + " " + number1 + " 1") !== -1;
+    } else {
+        play  = range.indexOf(number1 + " " + number2 + " 0") !== -1;
+        play  = play || range.indexOf(number2 + " " + number1 + " 0") !== -1;
+    }
+    return play;
+}
+
+Decision.preFlopPlay = function(client, BotCmd, BotCards, OpenCards, PlayerPosition, parseReply,potSize,round) {
+
+	const suitedConnectRange = ["10 9 1","9 8 1","8 7 1","7 6 1","6 5 1"];
+	const setMineRange = ["2 2 0","3 3 0","4 4 0","5 5 0","6 6 0", "7 7 0","8 8 0","9 9 0","10 10 0"];
+
+	const oneRange = ["14 14 0", "13 13 0"];
+	const twoRange = ["14 13 1", "12 12 0", "11 11 0"];
+	const threeRange = ["14 13 0","14 12 1","10 10 0"];
+	const fourRange = ["14 11 1","14 10 1","14 9 1","13 12 1","14 12 0","9 9 0"];
+	const fiveRange = ["14 8 1","14 7 1","13 11 1","13 10 1","14 11 0","8 8 0"];
+	const sixRange = ["14 6 1","14 5 1","14 10 0","13 10 1","13 12 0","12 11 1","11 10 1","7 7 0","6 6 0"];
+	const sevenRange = ["14 4 1","14 3 1","14 2 1","14 9 0","13 9 1","12 10 1","5 5 0","4 4 0","3 3 0"];
+	const eightRange = ["14 8 0","14 7 0","13 11 0","12 9 1","12 8 1","12 11 0","11 9 1","10 9 1","9 8 1","2 2 0"];
+	const nineRange = ["13 8 1","13 7 1","13 6 1","13 5 1","13 4 1"];
+	        
+	var tightRange = oneRange.concat(twoRange, threeRange, fourRange);
+	var buttonRange = oneRange.concat(twoRange, threeRange, fourRange, fiveRange, sixRange, suitedConnectRange);
+
+	var bigBlindRange = oneRange.concat(twoRange, threeRange, fourRange);
+	var smallBlindRange = oneRange.concat(twoRange, threeRange);
+    console.log("raise range" + BotCmd.raise);
+
+    // BOT UTG, UTG+1, UTG+2
+    if (PlayerPosition <= 2) {
+        
+        if (checkHandInRange(BotCards,tightRange, PlayerPosition)){
+            client.rpc('raise', potSize, parseReply);
+        } else {
+            client.rpc('fold', 0, parseReply); 
+        }
+    //BOT IN BUTTON
+    } else if (PlayerPosition === 3) {
+        if (checkHandInRange(BotCards,buttonRange, PlayerPosition)) {
+            client.rpc('raise', potSize, parseReply);
+        } else if (checkHandInRange(BotCards,setMineRange, PlayerPosition)) {
+            client.rpc('call', 0, parseReply);
+        } else {
+            client.rpc('fold', 0, parseReply);
+        }
+    //BOT IN SMALL BLIND
+    } else if (PlayerPosition === 4) {
+        if (checkHandInRange(BotCards, smallBlindRange, PlayerPosition)) {
+            client.rpc('raise', potSize, parseReply);
+        } else {
+            client.rpc('fold', 0, parseReply);
+        }
+        
+    //BOT IN BIG BLIND    
+    } else {
+        if (checkHandInRange(BotCards, bigBlindRange, PlayerPosition)) {
+            client.rpc('raise', potSize, parseReply);
+        } else {
+            client.rpc('fold', 0, parseReply);
+        }
+    }
+}
+
+
+
+
+
+
+// function Decision(client, BotCmd, BotCards, OpenCards, PlayerPosition, parseReply){
+
+// 		console.log("Decision called");
+
+// 		const oneRange = ["14 14 0", "13 13 0"]
+// 		const twoRange = ["14 13 1", "12 12 0", "11 11 0"]
+// 		const threeRange = ["14 13 0","14 12 1","10 10 0"]
+// 		const fourRange = ["14 11 1","14 10 1","14 9 1","13 12 1","14 12 0","9 9 0"]
+// 		const fiveRange = ["14 8 1","14 7 1","13 11 1","13 10 1","14 11 0","8 8 0"]
+// 		const sixRange = ["14 6 1","14 5 1","14 10 0","13 10 1","13 12 0","12 11 1","11 10 1","7 7 0","6 6 0"]
+// 		const sevenRange = ["14 4 1","14 3 1","14 2 1","14 9 0","13 9 1","12 10 1","5 5 0","4 4 0","3 3 0"]
+// 		const eightRange = ["14 8 0","14 7 0","13 11 0","12 9 1","12 8 1","12 11 0","11 9 1","10 9 1","9 8 1","2 2 0"]
+// 		const nineRange = ["13 8 1","13 7 1","13 6 1","13 5 1","13 4 1"]
+
+// 		const range = oneRange.concat(twoRange, threeRange, fourRange, fiveRange, sixRange, sevenRange, eightRange, nineRange);
+// 		var play = false;
+// 		if (BotCmd.fold) { // Check if it is our turn (a player can always fold)
+// 			console.log("-------BOT PLAYING-------")
+// 			console.log(BotCmd);
+// 			var color1 = BotCards[PlayerPosition][0] >> 4;
+// 			var number1 = BotCards[PlayerPosition][0] & 0xf;
+// 			var color2 = BotCards[PlayerPosition][1] >> 4;
+// 			var number2 = BotCards[PlayerPosition][1] & 0xf;
+// 			console.log("Card 1 has nr " + number1 + " and color " + color1);
+// 			console.log("Card 2 has nr " + number2 + " and color " + color2);
+// 			console.log(PlayerPosition)
+// 			console.log(OpenCards);
+
+// 			if (color1 === color2) {
+// 				play  = range.indexOf(number1 + " " + number2 + " 1") !== -1;
+// 				play  = play ||range.indexOf(number2 + " " + number1 + " 1") !== -1;
+// 			} else {
+// 				play  = range.indexOf(number1 + " " + number2 + " 0") !== -1;
+// 				play  = play || range.indexOf(number2 + " " + number1 + " 0") !== -1;
+// 			}
+
+// 			if (play) {
+// 				if (BotCmd.raise) {
+// 					client.rpc('raise', BotCmd.raise[0], parseReply);
+// 				} else if (BotCmd.check){
+// 					client.rpc('check', 0 , parseReply);
+// 				} else {
+// 					client.rpc('call', 0 , parseReply);
+// 				}
+// 			}else {
+// 				client.rpc('fold', 0, parseReply);
+// 			}
+// 		}
+// 	}
+
+
+},{}],4:[function(require,module,exports){
 var Poker = require('./poker');
 
 var POKER_CARDS = Poker.CARDS;
@@ -1128,7 +1302,7 @@ Holdem.rank = function(cards) {
 Holdem.maxFive = function(private_cards, shared_cards) {
 	var cards = Poker.sort( Poker.merge( Poker.clone(private_cards), shared_cards ) );
 	var len = cards.length;
-	if(len < 5 || len > 7 ) return null;
+	if(len < 5 || len > 7 ) return private_cards;
 	
 	var maxrank = 0, maxcards = null, i, j, tmp, tmprank;
 	
@@ -1184,7 +1358,7 @@ Holdem.view = function(cards) {
 };
 
 
-},{"./poker":5}],4:[function(require,module,exports){
+},{"./poker":6}],5:[function(require,module,exports){
 var Poker = require('./poker');
 
 var POKER_CARDS = Poker.CARDS;
@@ -1285,7 +1459,7 @@ Jinhua.view = function(cards) {
 };
 
 
-},{"./poker":5}],5:[function(require,module,exports){
+},{"./poker":6}],6:[function(require,module,exports){
 
 var POKER_COLORS = {
 	4: '♠', 		// spade

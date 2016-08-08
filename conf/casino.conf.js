@@ -76,7 +76,7 @@ exports = module.exports = {
 				no_joker: true,
 				no_number: [],
 				ready_countdown: 10,
-				turn_countdown: 20,
+				turn_countdown: 60,
 				limit_rule: 0,		// 0: limit, 1: pot limit, 2: no limit
 				limit: 100,			// big blind
 				limit_cap: 200,		// -1, means no limit

@@ -2,9 +2,16 @@
 var Client = require('../lib/client'),
 	Poker = require('../lib/poker'),
 	Jinhua = require('../lib/jinhua_poker'),
-	Holdem = require('../lib/holdem_poker');
+	Holdem = require('../lib/holdem_poker'),
+	Decision = require('../lib/decision');
 
 var client = null;
+var BotCmd = null;
+var BotCards = null;
+var OpenCards = null;
+var PlayerPosition = null;
+
+var BotPlay = false; // should bot play for you
 
 Poker.toHTML = function(cards) {
 	var html = '';
@@ -21,7 +28,7 @@ Poker.toHTML = function(cards) {
 $(document).ready(function(){
 	var socket = io();
 	
-	socket.log_traffic = true;
+	socket.log_traffic = false;
 	
 	client = new Client(socket);
 	
@@ -50,14 +57,7 @@ $(document).ready(function(){
 		addMsg(data.msg);
 		
 		setTimeout(function(){
-			var u = localStorage.getItem('x_userid');
-			var p = localStorage.getItem('x_passwd');
-			if(u && p) {
-				login(u, p);
-			} else {
-				//socket.emit('hello', {});
-				client.rpc('fastsignup', 0, parseSignUpReply);
-			}
+			client.rpc('fastsignup', 0, parseSignUpReply);
 		}, 1000);
 	});
 
@@ -160,6 +160,12 @@ $(document).ready(function(){
 	});
 	
 	client.on('countdown', function(ret){
+		if (BotCmd.fold && BotPlay && OpenCards.length === 0) {
+			Decision.preFlopPlay(client, BotCmd, BotCards, OpenCards, PlayerPosition, parseReply, client.room.pot);
+		} else if (BotCmd.fold) {
+			client.rpc('fold', 0, parseReply);
+		}	
+		addMsg(_T('count down:') + ret.seat + ', ' + ret.sec);
 		addMsg(_T('count down:') + ret.seat + ', ' + ret.sec);
 	});
 	
@@ -360,9 +366,21 @@ function onDialogOKClicked(e) {
 		client.rpc(method, args, parseReply);
 	}
 }
+function toogleBot(){
+	BotPlay = !BotPlay;
+	if (BotPlay) {
+		client.rpc('ready', 0, parseReply);
+	}
+}
 
 function updateCmds( cmds ){
 	var v, div, btn, words, label, input;
+	BotCmd = cmds;
+	console.log(cmds);
+	if (cmds.ready && BotPlay){
+		client.rpc('ready', 0, parseReply);
+	}
+
 	for(var k in cmds) {
 		v = cmds[ k ];
 		if(v === null) {
@@ -482,6 +500,15 @@ function updateCmds( cmds ){
 			
 		}
 	}
+	$('#BotPlay').remove();
+	if (BotPlay) {
+		btn = $('<button>').text(_T("Take Over")).attr('id', "BotPlay").attr('arg', 0).addClass('cmd');
+		$('#cmds').append(btn);
+	} else {
+		btn = $('<button>').text(_T("Bot Play")).attr('id', "BotPlay").attr('arg', 0).addClass('cmd');
+		$('#cmds').append(btn);
+	}
+	btn.on('click', toogleBot);
 }
 
 function login(u, p) {
@@ -490,7 +517,7 @@ function login(u, p) {
 		passwd: p
 	}, function(err,ret){
 		if(err) {
-            localStorage.removeItem('x_userid');
+          localStorage.removeItem('x_userid');
 		  localStorage.removeItem('x_passwd');
 			echo(ret);
 			socket.emit('hello', {});
@@ -589,6 +616,8 @@ function showRoom(room) {
 	var seats = room.seats;
 	var cards = room.cards;
 	var chips = room.chips;
+	BotCards = room.cards;
+	OpenCards = room.shared_cards;
 	$('#roomdesc').text(_T('gamers in room') + ': ' + Object.keys(gamers).join(', '));
 	for(var i=0, len=seats.length; i<len; i++) {
 		var uid = seats[i];
@@ -600,6 +629,7 @@ function showRoom(room) {
 				str += _T_('private cards') + '[ ' + Poker.visualize( cards[i] ) + ' ]';
 				
 				if(g.uid === client.uid) {
+					PlayerPosition = i;
 					$('#mycards').html( client.uid + ', ' + _T('my cards') + ': <br/>' + Poker.toHTML(cards[i]) );
 				}
 			}
