@@ -11,7 +11,7 @@ var BotCmd = null;
 var BotCards = null;
 var OpenCards = null;
 var PlayerPosition = null;
-
+var PlayerBets = [];
 var BotPlay = false; // should bot play for you
 
 Poker.toHTML = function(cards) {
@@ -107,7 +107,7 @@ $(document).ready(function(){
 	
 	client.on('gamestart', function(ret){
 		addMsg(_T('game start'));
-		
+		PlayerBets = []
 		if(ret.room) {
 			client.room = ret.room;
 		}
@@ -122,7 +122,7 @@ $(document).ready(function(){
 	
 	client.on('deal', function(ret){
 		addMsg(_T('dealing cards'));
-		
+		PlayerBets = [];
 		var room_cards = client.room.cards;
 		var deals = ret.deals;
 		var item, seat, cards;
@@ -162,19 +162,26 @@ $(document).ready(function(){
 	
 	client.on('countdown', function(ret){
 		if (BotCmd.fold && BotPlay && OpenCards.length === 0) {
-			Decision.preFlopPlay(client, BotCmd, BotCards, OpenCards, PlayerPosition, parseReply, client.room.pot);
-		} else if (BotCmd.fold) {
-			client.rpc('fold', 0, parseReply);
+			Decision.preFlopPlay(client, BotCmd, BotCards, OpenCards, PlayerPosition, parseReply, client.room.pot, PlayerBets);
+		} else if (BotCmd.fold && BotPlay && OpenCards.length === 3) {
+			Decision.flopPlay(client, BotCmd, BotCards, OpenCards, PlayerPosition, parseReply, client.room.pot, PlayerBets);
+		} else if (BotCmd.fold && BotPlay && OpenCards.length === 4) {
+			client.rpc('call', 0, parseReply);
+		} else if (BotCmd.fold && BotPlay && OpenCards.length === 5) {
+			client.rpc('call', 0, parseReply);
 		}	
 		addMsg(_T('count down:') + ret.seat + ', ' + ret.sec);
 		addMsg(_T('count down:') + ret.seat + ', ' + ret.sec);
 	});
 	
 	client.on('fold', function(ret){
+		console.log("fold");
 		addMsg( ret.uid + _T_('at seat') + ret.seat + _T_('fold'));
 	});
 	
 	client.on('call', function(ret){
+		PlayerBets.push(ret.call)
+		console.log("call");
 		var seat = parseInt(ret.seat);
 		addMsg( ret.uid + _T_('at seat') + seat + _T_('call') + ret.call);
 		
@@ -194,6 +201,8 @@ $(document).ready(function(){
 	});
 
 	client.on('raise', function(ret){
+		console.log("raise");
+		PlayerBets.push(ret.raise);
 		var seat = parseInt(ret.seat);
 		var raise_sum = (ret.call + ret.raise);
 		addMsg( ret.uid + _T_('at seat') + seat + _T_('raise') + ret.raise + ' (' + raise_sum + ')');
@@ -377,7 +386,6 @@ function toogleBot(){
 function updateCmds( cmds ){
 	var v, div, btn, words, label, input;
 	BotCmd = cmds;
-	console.log(cmds);
 	if (cmds.ready && BotPlay){
 		client.rpc('ready', 0, parseReply);
 	}
@@ -730,7 +738,110 @@ function execCmd() {
 	}
 }
 
-},{"../lib/client":2,"../lib/decision":3,"../lib/holdem_poker":4,"../lib/jinhua_poker":5,"../lib/poker":6}],2:[function(require,module,exports){
+},{"../lib/client":3,"../lib/decision":4,"../lib/holdem_poker":5,"../lib/jinhua_poker":6,"../lib/poker":7}],2:[function(require,module,exports){
+exports = module.exports = boardTexture;
+
+
+function boardTexture (openCards) {
+
+	var color1 = openCards[0] >> 4;
+    var number1 = openCards[0] & 0xf;
+    var color2 = openCards[1] >> 4;
+    var number2 = openCards[1] & 0xf;
+    var color3 = openCards[2] >> 4;
+    var number3 = openCards[2] & 0xf;
+
+    var flopCards = [number1,number2,number3];
+	
+	//sort cards
+	flopCards = flopCards.sort(function(a, b){return b-a;});
+
+
+	var connection = [flopCards[0]-flopCards[2],flopCards[0]-flopCards[1],flopCards[1]-flopCards[2]];
+
+	//Kollar om det finns kort som är lika
+	if (connection[0] === 0 && connection[1] === 0 && connection[2] === 0) {
+		flopCards = flopCards.concat("triple");
+	} else if (connection[1] === 0 || connection[2] === 0) {
+		flopCards = flopCards.concat("pair");
+	} else {
+		flopCards = flopCards.concat("no pair");
+	}
+
+	//Kollar stegchanser
+	if (connection[0] === 2 && connection[1] === 1) {
+		flopCards = flopCards.concat("three straight");
+	} else if (connection[1] === 1 || connection[2] === 1) {
+		flopCards = flopCards.concat("two straight");
+	} else if (connection[0] === 2 || connection[1] === 2 || connection[2] === 2) {
+		flopCards = flopCards.concat("gutshot");
+	} else {
+		flopCards = flopCards.concat("no straight");
+	}
+
+	//suited
+	if (color1 === color2 && color2 === color3) {
+    	flopCards = flopCards.concat("three suit");
+    } else if (color1 === color2 || color2 === color3 || color1 === color3) {
+    	flopCards = flopCards.concat("two suit");
+    }
+    
+	console.log("---------- BORDTEXTURE CALLED------------");
+    console.log(flopCards);
+
+    flopCards = flopCards.slice(3);
+    flopCards = flopCards.join(" ");
+
+
+    
+	var flop1 = "triple";
+	var flop2 = "pair two straight two suit";
+	var flop3 = "pair two straight";
+	var flop4 = "pair gutshot two suit";
+	var flop5 = "pair gutshot";	
+	var flop6 = "pair no gutshot two suit";
+	var flop7 = "pair no gutshot";
+	var flop8 = "pair no straight two suit";
+	var flop9 = "pair no straight";
+	var flop10 = "no pair three straight three suit";
+	var flop11 = "no pair three straight two suit";
+	var flop12 = "no pair three straight";
+	var flop13 = "no pair two straight three suit";
+	var flop14 = "no pair two straight two suit";
+	var flop15 = "no pair two straight";
+	var flop16 = "no pair gutshot three suit";
+	var flop17 = "no pair gutshot two suit";
+	var flop18 = "no pair gutshot";
+	var flop19 = "no pair no straight three suit";
+	var flop20 = "no pair no straight two suit";
+	var flop21 = "no pair no straight";
+
+	var flopTexture = [];
+
+	if ((flop7 + flop9 + flop18 + flop21).includes(flopCards) ) {
+		flopTexture = "dry flop";
+	} else if ((flop3 + flop15 + flop5 + flop6 + flop18).includes(flopCards)) {
+		flopTexture = "semi dry flop";
+	} else if ((flop4 + flop8 + flop1 + flop2 + flop15).includes(flopCards)) {
+		flopTexture = "semi wet flop";
+	} else if ((flop10 + flop11 + flop12 + flop13 + flop14 + flop16 + flop17 + flop19 + flop20).includes(flopCards)) {
+		flopTexture = "wet flop";
+	}
+
+	//high cards
+	if (number1 > 10 && number2 > 10 && number3 > 10) {
+		flopTexture = flopTexture.concat("three high");
+	} else if (number1 > 10 && number2 > 10) {
+		flopTexture = flopTexture.concat("two high");
+	} else if (number1 > 10) {
+		flopTexture = flopTexture.concat("one high");
+	}
+
+	return flopTexture;
+
+
+}
+},{}],3:[function(require,module,exports){
 exports = module.exports = Client;
 
 function Client( socket ) {	
@@ -980,20 +1091,50 @@ Client.prototype.rpc = function(method, args, func) {
 };
 
 
-},{}],3:[function(require,module,exports){
+},{}],4:[function(require,module,exports){
 /*jshint esversion: 6 */
 exports = module.exports = Decision;
 
+var boardTexture = require('./boardTexture');
+
+const suitedConnectRange = ["10 9 1","9 8 1","8 7 1","7 6 1","6 5 1"];
+const setMineRange = ["2 2 0","3 3 0","4 4 0","5 5 0","6 6 0", "7 7 0","8 8 0","9 9 0","10 10 0"];
+
+const oneRange = ["14 14 0", "13 13 0"];
+const twoRange = ["14 13 1", "12 12 0", "11 11 0"];
+const threeRange = ["14 13 0","14 12 1","10 10 0"];
+const fourRange = ["14 11 1","14 10 1","14 9 1","13 12 1","14 12 0","9 9 0"];
+const fiveRange = ["14 8 1","14 7 1","13 11 1","13 10 1","14 11 0","8 8 0"];
+const sixRange = ["14 6 1","14 5 1","14 10 0","13 10 1","13 12 0","12 11 1","11 10 1","7 7 0","6 6 0"];
+const sevenRange = ["14 4 1","14 3 1","14 2 1","14 9 0","13 9 1","12 10 1","5 5 0","4 4 0","3 3 0"];
+const eightRange = ["14 8 0","14 7 0","13 11 0","12 9 1","12 8 1","12 11 0","11 9 1","10 9 1","9 8 1","2 2 0"];
+const nineRange = ["13 8 1","13 7 1","13 6 1","13 5 1","13 4 1"];
+        
+const tightRange = oneRange.concat(twoRange, threeRange, fourRange, fiveRange, sixRange, sevenRange, eightRange);
+const buttonRange = oneRange.concat(twoRange, threeRange, fourRange, fiveRange, sixRange, suitedConnectRange);
+
+const bigBlindRange = oneRange.concat(twoRange, threeRange, fourRange);
+const smallBlindRange = oneRange.concat(twoRange, threeRange);
+
+const threeBetRange = oneRange.concat(twoRange, threeRange, fourRange);
+const fourBetRange = oneRange.concat(oneRange, twoRange);
+
+
+var parameter1 = 1;
+var paramater2 = 1;
+var parameter3 = 0;
+
+var stackSize = 1000;
+var equity = 1; //call some function
+var position = 0; //maybe call some function?
+var potSize = 1; //maybe we could call another function?
+//var playerBet = [betSize,playerIdentity];
+
 function Decision() {
 	if(!(this instanceof Decision)) return new Decision();
-	
-	this.uid = null;
-	this.profile = {};
-	this.room = null;
-	this.seat = -1;
 }
 
-function checkHandInRange(BotCards,range,PlayerPosition) {
+function checkHandInRange(BotCards, range, PlayerPosition) {
     var play = false;
     var color1 = BotCards[PlayerPosition][0] >> 4;
     var number1 = BotCards[PlayerPosition][0] & 0xf;
@@ -1013,41 +1154,102 @@ function checkHandInRange(BotCards,range,PlayerPosition) {
     return play;
 }
 
-Decision.preFlopPlay = function(client, BotCmd, BotCards, OpenCards, PlayerPosition, parseReply,potSize,round) {
+Decision.preFlopPlay = function(client, BotCmd, BotCards, OpenCards, PlayerPosition, parseReply, potSize, PlayerBets) {
+    console.log("this.tightRange");
+    console.log(tightRange);
+    switch(PlayerBets.length) {
+        case 0:
+            response0(client, BotCmd, BotCards, OpenCards, PlayerPosition, parseReply, potSize, PlayerBets)
+            break;
+        case 1:
+            response1(client, BotCmd, BotCards, OpenCards, PlayerPosition, parseReply, potSize, PlayerBets)
+            break;
+        case 2:
+            response2(client, BotCmd, BotCards, OpenCards, PlayerPosition, parseReply, potSize, PlayerBets)
+            break;
+        case 3:
+            response3(client, BotCmd, BotCards, OpenCards, PlayerPosition, parseReply, potSize, PlayerBets)
+            break;
+        default:
+            response3(client, BotCmd, BotCards, OpenCards, PlayerPosition, parseReply, potSize, PlayerBets)
+    }
 
-	const suitedConnectRange = ["10 9 1","9 8 1","8 7 1","7 6 1","6 5 1"];
-	const setMineRange = ["2 2 0","3 3 0","4 4 0","5 5 0","6 6 0", "7 7 0","8 8 0","9 9 0","10 10 0"];
+}
 
-	const oneRange = ["14 14 0", "13 13 0"];
-	const twoRange = ["14 13 1", "12 12 0", "11 11 0"];
-	const threeRange = ["14 13 0","14 12 1","10 10 0"];
-	const fourRange = ["14 11 1","14 10 1","14 9 1","13 12 1","14 12 0","9 9 0"];
-	const fiveRange = ["14 8 1","14 7 1","13 11 1","13 10 1","14 11 0","8 8 0"];
-	const sixRange = ["14 6 1","14 5 1","14 10 0","13 10 1","13 12 0","12 11 1","11 10 1","7 7 0","6 6 0"];
-	const sevenRange = ["14 4 1","14 3 1","14 2 1","14 9 0","13 9 1","12 10 1","5 5 0","4 4 0","3 3 0"];
-	const eightRange = ["14 8 0","14 7 0","13 11 0","12 9 1","12 8 1","12 11 0","11 9 1","10 9 1","9 8 1","2 2 0"];
-	const nineRange = ["13 8 1","13 7 1","13 6 1","13 5 1","13 4 1"];
-	        
-	var tightRange = oneRange.concat(twoRange, threeRange, fourRange);
-	var buttonRange = oneRange.concat(twoRange, threeRange, fourRange, fiveRange, sixRange, suitedConnectRange);
+Decision.flopPlay = function(client, BotCmd, BotCards, OpenCards, PlayerPosition, parseReply, potSize, PlayerBets) {
+    boardTexture(OpenCards);
+    switch(PlayerBets.length) {
+        case 0:
+            response0(client, BotCmd, BotCards, OpenCards, PlayerPosition, parseReply, potSize, PlayerBets)
+            break;
+        case 1:
+            response1(client, BotCmd, BotCards, OpenCards, PlayerPosition, parseReply, potSize, PlayerBets)
+            break;
+        case 2:
+            response2(client, BotCmd, BotCards, OpenCards, PlayerPosition, parseReply, potSize, PlayerBets)
+            break;
+        case 3:
+            response3(client, BotCmd, BotCards, OpenCards, PlayerPosition, parseReply, potSize, PlayerBets)
+            break;
+        default:
+            response3(client, BotCmd, BotCards, OpenCards, PlayerPosition, parseReply, potSize, PlayerBets)
+    }
 
-	var bigBlindRange = oneRange.concat(twoRange, threeRange, fourRange);
-	var smallBlindRange = oneRange.concat(twoRange, threeRange);
-    console.log("raise range" + BotCmd.raise);
+}
+
+
+
+//3 bet function, eller kallar vi den för raise function typ
+function threeBet (client, BotCards, PlayerPosition, potSize, parseReply) {
+    console.log("Threebet");
+    if (checkHandInRange(BotCards, threeBetRange, PlayerPosition)) {
+        client.rpc('raise', (potSize*3/4), parseReply);
+        return true;
+    } else {
+        return false;
+    }
+}
+
+//4 bet function, kommer mest behandla all-in eller inte
+function fourBet (client, BotCards, PlayerPosition, potSize, parseReply) {
+    if (checkHandInRange(BotCards, fourBetRange, PlayerPosition)) {
+        client.rpc('raise', (potSize*3/4), parseReply);
+    } else {
+        return 0;
+    }
+}
+
+//call function
+function call (client, BotCards, PlayerPosition, parseReply) {
+    console.log("call");
+    // var equity = (equity/100);
+    // var potOdds = 1 - playerBet(0) / (potSize + playerBet senaste bettet);
+    
+    // var callPrediction = parameter1*equity + parameter2*potOdds;
+        
+    if (checkHandInRange(BotCards, tightRange, PlayerPosition)) {
+        client.rpc('call', 0, parseReply);
+    } else {
+        client.rpc('fold', 0, parseReply);
+    }
+};
+
+//response function if 1 bet is played
+function response0 (client, BotCmd, BotCards, OpenCards, PlayerPosition, parseReply, potSize, PlayerBets) {
 
     // BOT UTG, UTG+1, UTG+2
     if (PlayerPosition <= 2) {
         
-        if (checkHandInRange(BotCards,tightRange, PlayerPosition)){
+        if (checkHandInRange(BotCards, tightRange, PlayerPosition)){
             client.rpc('raise', potSize, parseReply);
         } else {
             client.rpc('fold', 0, parseReply); 
         }
     //BOT IN BUTTON
     } else if (PlayerPosition === 3) {
-        if (checkHandInRange(BotCards,buttonRange, PlayerPosition)) {
+        if (checkHandInRange(BotCards, this.buttonRange, PlayerPosition)) {
             client.rpc('raise', potSize, parseReply);
-        } else if (checkHandInRange(BotCards,setMineRange, PlayerPosition)) {
+        } else if (checkHandInRange(BotCards, setMineRange, PlayerPosition)) {
             client.rpc('call', 0, parseReply);
         } else {
             client.rpc('fold', 0, parseReply);
@@ -1068,65 +1270,49 @@ Decision.preFlopPlay = function(client, BotCmd, BotCards, OpenCards, PlayerPosit
             client.rpc('fold', 0, parseReply);
         }
     }
+};
+
+//response function if 1 bet is played
+function response1 (client, BotCmd, BotCards, OpenCards, PlayerPosition, parseReply, potSize, PlayerBets) {
+    if (!threeBet(client, BotCards, PlayerPosition, potSize, parseReply)) {
+        call(client, BotCards, PlayerPosition, parseReply);
+    }
+};
+
+//response function if 2 bets are played
+function response2(client, BotCmd, BotCards, OpenCards, PlayerPosition, parseReply, potSize, PlayerBets) {
+    
+    if (PlayerBets[0] === PlayerBets[1]) {
+        if (!threeBet(client, BotCards, PlayerPosition, potSize, parseReply)) {
+            call(client, BotCards, PlayerPosition, parseReply);
+        }
+    }else {
+        if (!fourBet(client, BotCards, PlayerPosition, potSize, parseReply)) {
+            call(client, BotCards, PlayerPosition, parseReply);
+        } 
+    }
 }
 
+//response om 3 bets are played
+function response3(client, BotCmd, BotCards, OpenCards, PlayerPosition, parseReply, potSize, PlayerBets) {
+    var same = true;
+    for (var i = 0; i < PlayerBets.length - 1; i++) {
+        if (PlayerBets[i] !== PlayerBets[i + 1]) {
+            same = false;
+        }
+    }
+    if (same) {
+        if (!threeBet(client, BotCards, PlayerPosition, potSize, parseReply)) {
+            call(client, BotCards, PlayerPosition, parseReply);
+        }
+    } else {
+        if (!fourBet(client, BotCards, PlayerPosition, potSize, parseReply)) {
+            call(client, BotCards, PlayerPosition, parseReply);
+        } 
+     }
+}
 
-
-
-
-
-// function Decision(client, BotCmd, BotCards, OpenCards, PlayerPosition, parseReply){
-
-// 		console.log("Decision called");
-
-// 		const oneRange = ["14 14 0", "13 13 0"]
-// 		const twoRange = ["14 13 1", "12 12 0", "11 11 0"]
-// 		const threeRange = ["14 13 0","14 12 1","10 10 0"]
-// 		const fourRange = ["14 11 1","14 10 1","14 9 1","13 12 1","14 12 0","9 9 0"]
-// 		const fiveRange = ["14 8 1","14 7 1","13 11 1","13 10 1","14 11 0","8 8 0"]
-// 		const sixRange = ["14 6 1","14 5 1","14 10 0","13 10 1","13 12 0","12 11 1","11 10 1","7 7 0","6 6 0"]
-// 		const sevenRange = ["14 4 1","14 3 1","14 2 1","14 9 0","13 9 1","12 10 1","5 5 0","4 4 0","3 3 0"]
-// 		const eightRange = ["14 8 0","14 7 0","13 11 0","12 9 1","12 8 1","12 11 0","11 9 1","10 9 1","9 8 1","2 2 0"]
-// 		const nineRange = ["13 8 1","13 7 1","13 6 1","13 5 1","13 4 1"]
-
-// 		const range = oneRange.concat(twoRange, threeRange, fourRange, fiveRange, sixRange, sevenRange, eightRange, nineRange);
-// 		var play = false;
-// 		if (BotCmd.fold) { // Check if it is our turn (a player can always fold)
-// 			console.log("-------BOT PLAYING-------")
-// 			console.log(BotCmd);
-// 			var color1 = BotCards[PlayerPosition][0] >> 4;
-// 			var number1 = BotCards[PlayerPosition][0] & 0xf;
-// 			var color2 = BotCards[PlayerPosition][1] >> 4;
-// 			var number2 = BotCards[PlayerPosition][1] & 0xf;
-// 			console.log("Card 1 has nr " + number1 + " and color " + color1);
-// 			console.log("Card 2 has nr " + number2 + " and color " + color2);
-// 			console.log(PlayerPosition)
-// 			console.log(OpenCards);
-
-// 			if (color1 === color2) {
-// 				play  = range.indexOf(number1 + " " + number2 + " 1") !== -1;
-// 				play  = play ||range.indexOf(number2 + " " + number1 + " 1") !== -1;
-// 			} else {
-// 				play  = range.indexOf(number1 + " " + number2 + " 0") !== -1;
-// 				play  = play || range.indexOf(number2 + " " + number1 + " 0") !== -1;
-// 			}
-
-// 			if (play) {
-// 				if (BotCmd.raise) {
-// 					client.rpc('raise', BotCmd.raise[0], parseReply);
-// 				} else if (BotCmd.check){
-// 					client.rpc('check', 0 , parseReply);
-// 				} else {
-// 					client.rpc('call', 0 , parseReply);
-// 				}
-// 			}else {
-// 				client.rpc('fold', 0, parseReply);
-// 			}
-// 		}
-// 	}
-
-
-},{}],4:[function(require,module,exports){
+},{"./boardTexture":2}],5:[function(require,module,exports){
 var Poker = require('./poker');
 
 var POKER_CARDS = Poker.CARDS;
@@ -1358,7 +1544,7 @@ Holdem.view = function(cards) {
 };
 
 
-},{"./poker":6}],5:[function(require,module,exports){
+},{"./poker":7}],6:[function(require,module,exports){
 var Poker = require('./poker');
 
 var POKER_CARDS = Poker.CARDS;
@@ -1459,7 +1645,7 @@ Jinhua.view = function(cards) {
 };
 
 
-},{"./poker":6}],6:[function(require,module,exports){
+},{"./poker":7}],7:[function(require,module,exports){
 
 var POKER_COLORS = {
 	4: '♠', 		// spade

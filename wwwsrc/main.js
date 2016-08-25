@@ -10,7 +10,7 @@ var BotCmd = null;
 var BotCards = null;
 var OpenCards = null;
 var PlayerPosition = null;
-
+var PlayerBets = [];
 var BotPlay = false; // should bot play for you
 
 Poker.toHTML = function(cards) {
@@ -106,7 +106,7 @@ $(document).ready(function(){
 	
 	client.on('gamestart', function(ret){
 		addMsg(_T('game start'));
-		
+		PlayerBets = []
 		if(ret.room) {
 			client.room = ret.room;
 		}
@@ -121,7 +121,7 @@ $(document).ready(function(){
 	
 	client.on('deal', function(ret){
 		addMsg(_T('dealing cards'));
-		
+		PlayerBets = [];
 		var room_cards = client.room.cards;
 		var deals = ret.deals;
 		var item, seat, cards;
@@ -161,19 +161,26 @@ $(document).ready(function(){
 	
 	client.on('countdown', function(ret){
 		if (BotCmd.fold && BotPlay && OpenCards.length === 0) {
-			Decision.preFlopPlay(client, BotCmd, BotCards, OpenCards, PlayerPosition, parseReply, client.room.pot);
-		} else if (BotCmd.fold) {
-			client.rpc('fold', 0, parseReply);
+			Decision.preFlopPlay(client, BotCmd, BotCards, OpenCards, PlayerPosition, parseReply, client.room.pot, PlayerBets);
+		} else if (BotCmd.fold && BotPlay && OpenCards.length === 3) {
+			Decision.flopPlay(client, BotCmd, BotCards, OpenCards, PlayerPosition, parseReply, client.room.pot, PlayerBets);
+		} else if (BotCmd.fold && BotPlay && OpenCards.length === 4) {
+			client.rpc('call', 0, parseReply);
+		} else if (BotCmd.fold && BotPlay && OpenCards.length === 5) {
+			client.rpc('call', 0, parseReply);
 		}	
 		addMsg(_T('count down:') + ret.seat + ', ' + ret.sec);
 		addMsg(_T('count down:') + ret.seat + ', ' + ret.sec);
 	});
 	
 	client.on('fold', function(ret){
+		console.log("fold");
 		addMsg( ret.uid + _T_('at seat') + ret.seat + _T_('fold'));
 	});
 	
 	client.on('call', function(ret){
+		PlayerBets.push(ret.call)
+		console.log("call");
 		var seat = parseInt(ret.seat);
 		addMsg( ret.uid + _T_('at seat') + seat + _T_('call') + ret.call);
 		
@@ -193,6 +200,8 @@ $(document).ready(function(){
 	});
 
 	client.on('raise', function(ret){
+		console.log("raise");
+		PlayerBets.push(ret.raise);
 		var seat = parseInt(ret.seat);
 		var raise_sum = (ret.call + ret.raise);
 		addMsg( ret.uid + _T_('at seat') + seat + _T_('raise') + ret.raise + ' (' + raise_sum + ')');
@@ -376,7 +385,6 @@ function toogleBot(){
 function updateCmds( cmds ){
 	var v, div, btn, words, label, input;
 	BotCmd = cmds;
-	console.log(cmds);
 	if (cmds.ready && BotPlay){
 		client.rpc('ready', 0, parseReply);
 	}
