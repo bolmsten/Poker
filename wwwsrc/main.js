@@ -160,6 +160,9 @@ $(document).ready(function(){
 	});
 	
 	client.on('countdown', function(ret){
+		$.get( "/equity?hands=kk:qq", function( data ) {
+  			console.log(data);
+		});
 		if (BotCmd.fold && BotPlay && OpenCards.length === 0) {
 			Decision.preFlopPlay(client, BotCmd, BotCards, OpenCards, PlayerPosition, parseReply, client.room.pot, PlayerBets);
 		} else if (BotCmd.fold && BotPlay && OpenCards.length === 3) {

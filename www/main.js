@@ -161,6 +161,7 @@ $(document).ready(function(){
 	});
 	
 	client.on('countdown', function(ret){
+		socket.emit('equity', "kk:qq");
 		if (BotCmd.fold && BotPlay && OpenCards.length === 0) {
 			Decision.preFlopPlay(client, BotCmd, BotCards, OpenCards, PlayerPosition, parseReply, client.room.pot, PlayerBets);
 		} else if (BotCmd.fold && BotPlay && OpenCards.length === 3) {
@@ -829,11 +830,11 @@ function boardTexture (openCards) {
 	}
 
 	//high cards
-	if (number1 > 10 && number2 > 10 && number3 > 10) {
+	if (flopCards[0] > 10 && flopCards[1] > 10 && flopCards[2] > 10) {
 		flopTexture = flopTexture.concat("three high");
-	} else if (number1 > 10 && number2 > 10) {
+	} else if (flopCards[0] > 10 && flopCards[1] > 10) {
 		flopTexture = flopTexture.concat("two high");
-	} else if (number1 > 10) {
+	} else if (flopCards[0] > 10) {
 		flopTexture = flopTexture.concat("one high");
 	}
 
@@ -1177,7 +1178,7 @@ Decision.preFlopPlay = function(client, BotCmd, BotCards, OpenCards, PlayerPosit
 }
 
 Decision.flopPlay = function(client, BotCmd, BotCards, OpenCards, PlayerPosition, parseReply, potSize, PlayerBets) {
-    boardTexture(OpenCards);
+    console.log(boardTexture(OpenCards));
     switch(PlayerBets.length) {
         case 0:
             response0(client, BotCmd, BotCards, OpenCards, PlayerPosition, parseReply, potSize, PlayerBets)
