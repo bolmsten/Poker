@@ -160,9 +160,9 @@ $(document).ready(function(){
 	});
 	
 	client.on('countdown', function(ret){
-		$.get( "/equity?hands=kk:qq", function( data ) {
-  			console.log(data);
-		});
+		// $.get( "/equity?hands=kk:qq", function( data ) {
+  // 			console.log(data);
+		// });
 		if (BotCmd.fold && BotPlay && OpenCards.length === 0) {
 			Decision.preFlopPlay(client, BotCmd, BotCards, OpenCards, PlayerPosition, parseReply, client.room.pot, PlayerBets);
 		} else if (BotCmd.fold && BotPlay && OpenCards.length === 3) {
@@ -172,18 +172,15 @@ $(document).ready(function(){
 		} else if (BotCmd.fold && BotPlay && OpenCards.length === 5) {
 			client.rpc('call', 0, parseReply);
 		}	
-		addMsg(_T('count down:') + ret.seat + ', ' + ret.sec);
-		addMsg(_T('count down:') + ret.seat + ', ' + ret.sec);
+		//addMsg(_T('count down:') + ret.seat + ', ' + ret.sec);
 	});
 	
 	client.on('fold', function(ret){
-		console.log("fold");
 		addMsg( ret.uid + _T_('at seat') + ret.seat + _T_('fold'));
 	});
 	
 	client.on('call', function(ret){
 		PlayerBets.push(ret.call)
-		console.log("call");
 		var seat = parseInt(ret.seat);
 		addMsg( ret.uid + _T_('at seat') + seat + _T_('call') + ret.call);
 		
@@ -203,7 +200,6 @@ $(document).ready(function(){
 	});
 
 	client.on('raise', function(ret){
-		console.log("raise");
 		PlayerBets.push(ret.raise);
 		var seat = parseInt(ret.seat);
 		var raise_sum = (ret.call + ret.raise);
