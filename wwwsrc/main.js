@@ -3,7 +3,9 @@ var Client = require('../lib/client'),
 	Poker = require('../lib/poker'),
 	Jinhua = require('../lib/jinhua_poker'),
 	Holdem = require('../lib/holdem_poker'),
-	Decision = require('../lib/decision');
+	Decision = require('../lib/decision'),
+	equityCalculator = require('../lib/equity'),
+	handTranslator = require('../lib/handTranslator');
 
 var client = null;
 var BotCmd = null;
@@ -12,6 +14,8 @@ var OpenCards = null;
 var PlayerPosition = null;
 var PlayerBets = [];
 var BotPlay = false; // should bot play for you
+var EasyBotPlay = false; // should easy bot play for you
+var PlayersInGame = 0;
 
 Poker.toHTML = function(cards) {
 	var html = '';
@@ -107,6 +111,7 @@ $(document).ready(function(){
 	client.on('gamestart', function(ret){
 		addMsg(_T('game start'));
 		PlayerBets = []
+		
 		if(ret.room) {
 			client.room = ret.room;
 		}
@@ -123,6 +128,7 @@ $(document).ready(function(){
 		addMsg(_T('dealing cards'));
 		PlayerBets = [];
 		var room_cards = client.room.cards;
+		PlayersInGame = client.room.gamers_count;
 		var deals = ret.deals;
 		var item, seat, cards;
 		while(deals.length > 0) {
@@ -160,22 +166,68 @@ $(document).ready(function(){
 	});
 	
 	client.on('countdown', function(ret){
-		// $.get( "/equity?hands=kk:qq", function( data ) {
-  // 			console.log(data);
-		// });
-		if (BotCmd.fold && BotPlay && OpenCards.length === 0) {
-			Decision.preFlopPlay(client, BotCmd, BotCards, OpenCards, PlayerPosition, parseReply, client.room.pot, PlayerBets);
-		} else if (BotCmd.fold && BotPlay && OpenCards.length === 3) {
-			Decision.flopPlay(client, BotCmd, BotCards, OpenCards, PlayerPosition, parseReply, client.room.pot, PlayerBets);
-		} else if (BotCmd.fold && BotPlay && OpenCards.length === 4) {
-			client.rpc('call', 0, parseReply);
-		} else if (BotCmd.fold && BotPlay && OpenCards.length === 5) {
-			client.rpc('call', 0, parseReply);
-		}	
-		//addMsg(_T('count down:') + ret.seat + ', ' + ret.sec);
+
+		console.log(ret);
+
+		console.log("-------Information---------");
+		console.log("Pot : " + client.room.pot);
+		console.log("Player Position : " + PlayerPosition);
+		console.log("Player Bets : " + PlayerBets);
+		console.log("Gamers : " + PlayersInGame);
+		console.log("Dealer seat : " + client.room.dealer_seat);
+		console.log("Client Object : ");
+		console.log(client);
+		console.log("-----End Information-------");
+
+
+
+		if (BotCmd.fold) {
+			if (BotPlay) {
+				console.log("------Bot--------");
+				if (OpenCards.length === 0) { //PreFlop
+					Decision.preFlopPlay(client, BotCmd, BotCards, OpenCards, PlayerPosition, parseReply, client.room.pot, PlayerBets);
+				} else if (OpenCards.length === 3) { //Flop
+					Decision.flopPlay(client, BotCmd, BotCards, OpenCards, PlayerPosition, parseReply, client.room.pot, PlayerBets);
+				} else if (OpenCards.length === 4) { //River
+					client.rpc('call', 0, parseReply);
+				} else if (BotCmd.fold && OpenCards.length === 5) { //Turn
+					client.rpc('call', 0, parseReply);
+				}
+			} else if (EasyBotPlay) {
+
+				console.log("------EasyBot--------");
+				var myHand = handTranslator.card(BotCards[PlayerPosition]);
+	    		var board = handTranslator.card(OpenCards);
+	    		var opponentHand = handTranslator.opponentRange(0.25);
+
+	    		if (board) {
+	    			board = "&board=" + board
+	    		}
+	    		var equity = equityCalculator(myHand + opponentHands + board);
+
+	    		if (BotCmd.call) {
+	    			if (equity[myHand] > 0.7) {
+	    				client.rpc('raise', client.room.pot, parseReply);
+	    			}else {
+	    				client.rpc('call', 0, parseReply);
+	    			}
+	    		} else {
+	    			if (equity[myHand] > 0.7) {
+	    				client.rpc('raise', client.room.pot, parseReply);
+	    			} else {
+	    				client.rpc('check', 0, parseReply);
+	    			}
+	    		}
+
+			}
+		}
+
+
+
 	});
 	
 	client.on('fold', function(ret){
+		PlayersInGame = PlayersInGame - 1;
 		addMsg( ret.uid + _T_('at seat') + ret.seat + _T_('fold'));
 	});
 	
@@ -381,10 +433,17 @@ function toogleBot(){
 	}
 }
 
+function toogleEasyBot(){
+	EasyBotPlay = !EasyBotPlay;
+	if (EasyBotPlay) {
+		client.rpc('ready', 0, parseReply);
+	}
+}
+
 function updateCmds( cmds ){
 	var v, div, btn, words, label, input;
 	BotCmd = cmds;
-	if (cmds.ready && BotPlay){
+	if (cmds.ready && (BotPlay || EasyBotPlay)){
 		client.rpc('ready', 0, parseReply);
 	}
 
@@ -516,6 +575,16 @@ function updateCmds( cmds ){
 		$('#cmds').append(btn);
 	}
 	btn.on('click', toogleBot);
+
+	$('#EasyBotPlay').remove();
+	if (EasyBotPlay) {
+		btn = $('<button>').text(_T("Take Over")).attr('id', "EasyBotPlay").attr('arg', 0).addClass('cmd');
+		$('#cmds').append(btn);
+	} else {
+		btn = $('<button>').text(_T("EasyBot Play")).attr('id', "EasyBotPlay").attr('arg', 0).addClass('cmd');
+		$('#cmds').append(btn);
+	}
+	btn.on('click', toogleEasyBot);
 }
 
 function login(u, p) {
